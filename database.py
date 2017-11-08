@@ -15,20 +15,23 @@ class Database:
 	def initialize_database(self):
 		cursor = self.db.cursor()
 		cursor.execute('''
-			CREATE TABLE users(id INTEGER PRIMARY KEY, chatId TEXT, rate_limited BOOLEAN);
+			CREATE TABLE users(id INTEGER PRIMARY KEY,
+					   chatId TEXT,
+					   rate_limited BOOLEAN,
+					   twitter_username TEXT);
 		''')
 		self.db.commit()
 
 	def add_user(self, chatId):
 		cursor = self.db.cursor()
-		cursor.execute('''INSERT INTO users(chatId, rate_limited)
-                  VALUES(?,?)''', (chatId, True))
+		cursor.execute('''INSERT INTO users(chatId, rate_limited, twitter_username)
+                  VALUES(?,?,?)''', (chatId, True, ""))
 		self.db.commit()
 
 	def get_user(self,chatId):
 		cursor = self.db.cursor()
 		cursor.execute('''
-			SELECT chatId, rate_limited FROM users WHERE chatId=?;
+			SELECT chatId, rate_limited, twitter_username FROM users WHERE chatId=?;
 		''', (chatId,))
 		user = cursor.fetchone()
 		return user
@@ -46,3 +49,15 @@ class Database:
 		user = self.get_user(chatId)
 		if user is None: return True
 		return True if user[1] is 1 else False
+
+	def setTwitterUsername(self,chatId,username):
+		user = self.get_user(chatId)
+		if user is None: return
+		cursor = self.db.cursor()
+		cursor.execute('''UPDATE users SET twitter_username = ? WHERE chatId = ? ''', (username, chatId))
+		self.db.commit()
+
+	def getTwitterUsername(self,chatId):
+		user = self.get_user(chatId)
+		if user is None: return None
+		return user[2]

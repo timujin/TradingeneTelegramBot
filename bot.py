@@ -4,6 +4,8 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram import utils
 
 from database import Database
+import twitterapi
+
 ###
 import logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -12,31 +14,35 @@ logger = logging.getLogger(__name__)
 ###
 connect_db = lambda: Database ("db.sqlite")
 
-def start(bot, update):
+def start(bot, update, chat_id=None):
 	db = connect_db()
-	chat_id = update.message.chat_id
+	chat_id = chat_id or update.message.chat_id
 	user = db.get_user(chat_id)
 	print(user)
 	message = ""
 	if user is None:
 		db.add_user(chat_id)
-		message = "New user registered"
+		message = "Добро пожаловать!"
 	else:
-		message = "Hello, old user!"
+		message = "Добро пожаловать!"
 
 	button_list = [
 	    [InlineKeyboardButton("Получить прогноз по инструменту", callback_data="1_forecast")],
 	    [InlineKeyboardButton("Получить стратегию по инструменту", callback_data="1_strategy")],
+	    [InlineKeyboardButton("Сделать репост в Twitter", callback_data="twitter")],
 	    [InlineKeyboardButton("Помощь", callback_data="help")],
 	]
 	reply_markup = InlineKeyboardMarkup(button_list)
-	update.message.reply_text(message,reply_markup=reply_markup)
+	bot.send_message(chat_id,message,reply_markup=reply_markup)
 
 def callback_query(bot, update):
 	query = update.callback_query.data
 	if query == "help":
-		return bot.send_message(update.callback_query.message.chat_id, "Help text")
-
+		return bot.send_message(update.callback_query.message.chat_id, "*текст помощи*")
+	if query == "twitter":
+		return prepare_repost(bot,update)
+	if query == "twitter_done_repost":
+		return twitter_done_repost(bot,update)
 
 	parts = query.split("_")
 	if parts[0] == "1":
@@ -72,19 +78,69 @@ def picked_instrument(req,instr,bot,update):
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
 
 def picked_term(req,instr,term,bot,update):
-	
+	is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
+	if not is_ratelimited or term=="short":
+		filename = "documents/{}_{}_{}.html".format(req,instr,term)
+		bot.send_document(update.callback_query.message.chat_id,document=open(filename, 'rb'))
+	else:
+		message = "Увы, вам доступны только краткосрочные прогнозы. Для получения доступа к остальным прогнозам сделайте репост нашего поста в Twitter"
+		bot.send_message(update.callback_query.message.chat_id,message)
+	return start(bot, update,update.callback_query.message.chat_id)
 
+
+def prepare_repost(bot,update):
+	message = "Напишите ваше имя пользователя Twitter в формате @username"
+	bot.send_message(update.callback_query.message.chat_id,message)
+
+def register_twitter_name(bot,update):
+	text = update.message.text
+	if text[0] != "@":
+		return start(bot,update)
+	else:
+		user_exists = twitterapi.doesUserExist(text[1:])
+		if not user_exists:
+			message = "Невозможно зарегистрировать пользователя Twitter: такого пользователя не существует"
+			bot.send_message(chat_id=update.message.chat_id, text=message)
+		else:
+			connect_db().setTwitterUsername(update.message.chat_id,text[1:])
+			message = "Зарегистрировано имя Twitter: {}".format(text)
+			bot.send_message(chat_id=update.message.chat_id, text=message)
+			share_repost(bot,update)
+
+
+def share_repost(bot,update):
+	print("sharing repost")
+	tw = connect_db().getTwitterUsername(update.message.chat_id)
+	message = "Сделайте репост этой записи на своем аккаунте Twitter:\n {}".format(twitterapi.retweet_link)
+	button_list = [
+	    [InlineKeyboardButton("Сделано!", callback_data="twitter_done_repost")],
+	]
+	reply_markup = InlineKeyboardMarkup(button_list)
+	bot.send_message(chat_id=update.message.chat_id, text=message,reply_markup=reply_markup)
+
+
+def twitter_done_repost(bot,update):
+	chatId = update.callback_query.message.chat_id
+	username = connect_db().getTwitterUsername(chatId)
+	status = twitterapi.getLastStatusByUsername(username)
+	res = twitterapi.isLastStatusOurRepost(status)
+	if res:
+		connect_db().unlock_user(chatId)
+		bot.send_message(chat_id=chatId, text="Репост зарегистрирован, возможности бота расширены")	
+	else:
+		bot.send_message(chat_id=chatId, text="Репост не найден")	
+	return start(bot, update,update.callback_query.message.chat_id)
+		
 
 def main():
 	"""Start the bot."""
 	updater = Updater("471404918:AAFQ1-pS0KF0u5gWnq3VpFAnfGwwePhiTk0")
 	dp = updater.dispatcher
-
-	# on different commands - answer in Telegram
 	dp.add_handler(CommandHandler("start", start))
 	dp.add_handler(CallbackQueryHandler(callback_query))
 
-	# on noncommand i.e message - echo the message on Telegram
+	twitter_handler = MessageHandler(Filters.text, register_twitter_name)
+	dp.add_handler(twitter_handler)
 	updater.start_polling()
 
 	# Run the bot until you press Ctrl-C or the process receives SIGINT,
