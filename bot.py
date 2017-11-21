@@ -28,7 +28,7 @@ def start(bot, update, chat_id=None):
 
 	button_list = [
 	    [InlineKeyboardButton("Получить прогноз по инструменту", callback_data="1_forecast")],
-	    [InlineKeyboardButton("Получить стратегию по инструменту", callback_data="1_strategy")],
+	    [InlineKeyboardButton("Подписаться на стратегию по инструменту", callback_data="1_strategy")],
 	    [InlineKeyboardButton("Сделать репост в Twitter", callback_data="twitter")],
 	    [InlineKeyboardButton("Помощь", callback_data="help")],
 	]
@@ -37,12 +37,19 @@ def start(bot, update, chat_id=None):
 
 def callback_query(bot, update):
 	query = update.callback_query.data
+	if query == "start":
+		return start(bot, update, chat_id = update.callback_query.message.chat_id)
 	if query == "help":
 		return bot.send_message(update.callback_query.message.chat_id, "*текст помощи*")
 	if query == "twitter":
 		return prepare_repost(bot,update)
 	if query == "twitter_done_repost":
 		return twitter_done_repost(bot,update)
+
+	if query.startswith("cancel_sub"):
+		return cancel_sub(bot,update)
+	if query.startswith("confirm_sub"):
+		return confirm_sub(bot,update)
 
 	parts = query.split("_")
 	if parts[0] == "1":
@@ -53,7 +60,7 @@ def callback_query(bot, update):
 		return picked_term(parts[1],parts[2],parts[3],bot,update)
 	else:
 		bot.send_message(update.callback_query.message.chat_id, "Invalid request")
-		return start(bot, update)
+		return start(bot, update, chat_id = update.callback_query.message.chat_id)
 
 
 def request(req,bot,update):
@@ -68,6 +75,12 @@ def request(req,bot,update):
 
 
 def picked_instrument(req,instr,bot,update):
+	if req == "forecast":
+		return picked_instrument_for_forecast(req,instr,bot,update)
+	elif req == "strategy":
+		return picked_instrument_for_strategy(req,instr,bot,update)
+
+def picked_instrument_for_forecast(req,instr,bot,update):
 	message = "Выберите срок прогноза"
 	button_list = [
 	    [InlineKeyboardButton("Долгосрочный", callback_data="3_{}_{}_long".format(req,instr))],
@@ -76,6 +89,29 @@ def picked_instrument(req,instr,bot,update):
 	]
 	reply_markup = InlineKeyboardMarkup(button_list)
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
+
+
+def picked_instrument_for_strategy(req,instr,bot,update):
+	db = connect_db()
+	is_subscribed = db.is_subscribed(update.callback_query.message.chat_id, instr)
+	message = None
+	button_list = None
+	if is_subscribed:
+		message = "Вы подписаны на обновления по инструменту"
+		button_list = [
+		    [InlineKeyboardButton("Отписаться", callback_data="cancel_sub_{}".format(instr))],
+		    [InlineKeyboardButton("Отмена", callback_data="start".format(req,instr))],
+		]
+	else:
+		message = "Подписаться на обновления по инструменту?"
+		button_list = [
+		    [InlineKeyboardButton("Подписаться", callback_data="confirm_sub_{}".format(instr))],
+		    [InlineKeyboardButton("Отмена", callback_data="start".format(req,instr))],
+		]
+	reply_markup = InlineKeyboardMarkup(button_list)
+	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
+				
+
 
 def picked_term(req,instr,term,bot,update):
 	is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
@@ -131,6 +167,18 @@ def twitter_done_repost(bot,update):
 		bot.send_message(chat_id=chatId, text="Репост не найден")	
 	return start(bot, update,update.callback_query.message.chat_id)
 		
+
+def confirm_sub(bot,update):
+	instr = update.callback_query.data[-3:]
+	connect_db().subscribe_user(update.callback_query.message.chat_id, instr)
+	message = "Successfully subscribed!"	
+	return start(bot, update,update.callback_query.message.chat_id)
+
+def cancel_sub(bot,update):
+	instr = update.callback_query.data[-3:]
+	connect_db().usubscribe_user(update.callback_query.message.chat_id, instr)
+	message = "Successfully unsubscribed!"	
+	return start(bot, update,update.callback_query.message.chat_id)
 
 def main():
 	"""Start the bot."""

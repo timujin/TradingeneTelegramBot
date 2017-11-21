@@ -20,6 +20,11 @@ class Database:
 					   rate_limited BOOLEAN,
 					   twitter_username TEXT);
 		''')
+		cursor.execute('''
+			CREATE TABLE subscriptions(chatId TEXT,
+						   instrument TEXT,
+						   FOREIGN KEY(chatId) REFERENCES users(chatId));
+		''')
 		self.db.commit()
 
 	def add_user(self, chatId):
@@ -37,7 +42,7 @@ class Database:
 		return user
 
 	def add_user_if_not_exists(self,chatId):
-		user = get_user(chatId)
+		user = self.get_user(chatId)
 		if user is None: self.add_user(chatId)
 
 	def unlock_user(self,chatId):
@@ -50,6 +55,30 @@ class Database:
 		if user is None: return True
 		return True if user[1] is 1 else False
 
+	def is_subscribed(self,chatId,instrument):
+		user = self.get_user(chatId)
+		if user is None: return False
+		cursor = self.db.cursor()
+		cursor.execute('''SELECT * FROM subscriptions WHERE chatId = ? and instrument = ? ''', (chatId, instrument))
+		subscription = cursor.fetchone()
+		print("sub", subscription)
+		if subscription is None:
+			return False
+		else:
+			return True
+		
+	def subscribe_user(self,chatId,instrument):
+		self.add_user_if_not_exists(chatId)
+		cursor = self.db.cursor()
+		cursor.execute('''INSERT INTO subscriptions(chatId, instrument)
+                  		  VALUES(?,?)''', (chatId, instrument))
+		self.db.commit()
+
+	def usubscribe_user(self,chatId,instrument):
+		cursor = self.db.cursor()
+		cursor.execute(''' DELETE FROM subscriptions WHERE chatId = ? and instrument = ? ''',  (chatId, instrument))
+		self.db.commit()
+		
 	def setTwitterUsername(self,chatId,username):
 		user = self.get_user(chatId)
 		if user is None: return
