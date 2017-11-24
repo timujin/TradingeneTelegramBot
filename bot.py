@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from telegram import utils
+from telegram import utils, Bot
 
 from database import Database
 import twitterapi
@@ -14,17 +14,23 @@ logger = logging.getLogger(__name__)
 ###
 connect_db = lambda: Database ("db.sqlite")
 
-def start(bot, update, chat_id=None):
+apikey = "471404918:AAFQ1-pS0KF0u5gWnq3VpFAnfGwwePhiTk0"
+
+################
+##### bot ######
+################
+
+def start(bot, update, chat_id=None,message=None):
 	db = connect_db()
 	chat_id = chat_id or update.message.chat_id
 	user = db.get_user(chat_id)
 	print(user)
-	message = ""
-	if user is None:
-		db.add_user(chat_id)
-		message = "Добро пожаловать!"
-	else:
-		message = "Добро пожаловать!"
+	if message is None:
+		if user is None:
+			db.add_user(chat_id)
+			message = "Добро пожаловать!"
+		else:
+			message = "Добро пожаловать!"
 
 	button_list = [
 	    [InlineKeyboardButton("Получить прогноз по инструменту", callback_data="1_forecast")],
@@ -172,17 +178,57 @@ def confirm_sub(bot,update):
 	instr = update.callback_query.data[-3:]
 	connect_db().subscribe_user(update.callback_query.message.chat_id, instr)
 	message = "Successfully subscribed!"	
-	return start(bot, update,update.callback_query.message.chat_id)
+	return start(bot, update,update.callback_query.message.chat_id,message=message)
 
 def cancel_sub(bot,update):
 	instr = update.callback_query.data[-3:]
 	connect_db().usubscribe_user(update.callback_query.message.chat_id, instr)
 	message = "Successfully unsubscribed!"	
-	return start(bot, update,update.callback_query.message.chat_id)
+	return start(bot, update,update.callback_query.message.chat_id,message=message)
+
+
+################
+### signals ####
+################
+
+import threading
+import time
+
+class SignalThread (threading.Thread):
+	exitFlag = 0
+	def __init__(self, threadID, name):
+		threading.Thread.__init__(self)
+		self.threadID = threadID
+		self.name = name
+
+	def run(self):
+		print "Starting " + self.name
+		poll_signals()
+		print "Exiting " + self.name
+
+def poll_signals():
+	while True:
+		db = connect_db()
+		signals = db.getSignals()
+		#print("tick", signals)
+		if signals is not []:
+			process_signals(signals)
+		db.clearSignals()
+		time.sleep(1)
+
+def process_signals(signals):
+	for signal in signals:
+		print("Signal", signal)
+		users = connect_db().get_subscribed_users(signal[0])
+		for chatId in users:
+			print ("sending...", chatId[0])
+			Bot(apikey).send_message(chat_id=chatId[0], text=signal[1])
+
+###########################
 
 def main():
 	"""Start the bot."""
-	updater = Updater("471404918:AAFQ1-pS0KF0u5gWnq3VpFAnfGwwePhiTk0")
+	updater = Updater(apikey)
 	dp = updater.dispatcher
 	dp.add_handler(CommandHandler("start", start))
 	dp.add_handler(CallbackQueryHandler(callback_query))
@@ -191,11 +237,13 @@ def main():
 	dp.add_handler(twitter_handler)
 	updater.start_polling()
 
+	thread1 = SignalThread(1, "Thread-1")
+	thread1.start()
 	# Run the bot until you press Ctrl-C or the process receives SIGINT,
 	# SIGTERM or SIGABRT. This should be used most of the time, since
 	# start_polling() is non-blocking and will stop the bot gracefully.
 	updater.idle()
-
+	SignalThread.exit_flag = 1
 
 if __name__ == '__main__':
 	main()

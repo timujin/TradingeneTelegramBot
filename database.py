@@ -25,6 +25,10 @@ class Database:
 						   instrument TEXT,
 						   FOREIGN KEY(chatId) REFERENCES users(chatId));
 		''')
+		cursor.execute('''
+			CREATE TABLE signals(instrument TEXT,
+					     data TEXT);
+		''')
 		self.db.commit()
 
 	def add_user(self, chatId):
@@ -78,6 +82,15 @@ class Database:
 		cursor = self.db.cursor()
 		cursor.execute(''' DELETE FROM subscriptions WHERE chatId = ? and instrument = ? ''',  (chatId, instrument))
 		self.db.commit()
+
+	def get_subscribed_users(self,instrument):
+		cursor = self.db.cursor()
+		cursor.execute('''SELECT users.chatId
+				  FROM users INNER JOIN subscriptions ON users.chatId = subscriptions.chatId
+				  WHERE subscriptions.instrument = ?''', (instrument,))
+		subs = cursor.fetchall()
+		print("Subscriptions:", subs)
+		return subs
 		
 	def setTwitterUsername(self,chatId,username):
 		user = self.get_user(chatId)
@@ -90,3 +103,20 @@ class Database:
 		user = self.get_user(chatId)
 		if user is None: return None
 		return user[2]
+
+	def getSignals(self):
+		cursor = self.db.cursor()
+		cursor.execute('''SELECT * FROM signals ''')
+		signals = cursor.fetchall()	
+		return signals
+
+	def addSignal(self, instrument, data):
+		cursor = self.db.cursor()
+		cursor.execute('''INSERT INTO signals(instrument, data)
+                  		  VALUES(?,?)''', (instrument, data))
+		self.db.commit()
+
+	def clearSignals(self):
+		cursor = self.db.cursor()
+		cursor.execute(''' DELETE FROM signals ''', ())
+		self.db.commit()

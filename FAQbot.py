@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
 from telegram import utils
 from FAQbotData import questions
 import logging
@@ -47,8 +47,12 @@ def user_picked_question(bot,update,query):
 	queryparts = query.split("_")
 	topic_index= queryparts[1]
 	question_index= queryparts[2]
-	message = questions[int(topic_index)][1][int(question_index)][1]
-	bot.send_message(update.callback_query.message.chat_id,message)
+	question =  questions[int(topic_index)][1][int(question_index)][0]
+	answer = questions[int(topic_index)][1][int(question_index)][1]
+	message = "*{}*\n{}".format(question,answer)
+	button_list = [[InlineKeyboardButton("< На главную", callback_data="start")]]
+	reply_markup = InlineKeyboardMarkup(button_list)
+	bot.send_message(update.callback_query.message.chat_id,message,parse_mode=ParseMode.MARKDOWN,reply_markup=reply_markup)
 
 def main():
 	"""Start the bot."""
