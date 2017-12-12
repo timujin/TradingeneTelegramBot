@@ -76,11 +76,13 @@ class Database:
 		cursor = self.db.cursor()
 		cursor.execute('''INSERT INTO subscriptions(chatId, instrument)
                   		  VALUES(?,?)''', (chatId, instrument))
+		print ("Subscribing!")
 		self.db.commit()
 
 	def usubscribe_user(self,chatId,instrument):
 		cursor = self.db.cursor()
 		cursor.execute(''' DELETE FROM subscriptions WHERE chatId = ? and instrument = ? ''',  (chatId, instrument))
+		print ("Unsubscribing!")
 		self.db.commit()
 
 	def get_subscribed_users(self,instrument):

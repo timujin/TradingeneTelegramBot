@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 ###
 connect_db = lambda: Database ("db.sqlite")
 
-apikey = "471404918:AAFQ1-pS0KF0u5gWnq3VpFAnfGwwePhiTk0"
+apikey = "485825079:AAFO6uJteoP8BidLAgHKnOQlfe-epi1zUik"
 
 ################
 ##### bot ######
@@ -51,53 +51,78 @@ def callback_query(bot, update):
 		return prepare_repost(bot,update)
 	if query == "twitter_done_repost":
 		return twitter_done_repost(bot,update)
-
-	if query.startswith("cancel_sub"):
-		return cancel_sub(bot,update)
-	if query.startswith("confirm_sub"):
-		return confirm_sub(bot,update)
-
 	parts = query.split("_")
-	if parts[0] == "1":
-		return request(parts[1],bot,update)
-	elif parts[0] == "2":
-		return picked_instrument(parts[1],parts[2],bot,update)
+	print("query", query)
+	if parts[0] == "1" and parts[1] == "strategy":
+		return request_strategy(bot,update)
+	elif parts[0] == "1" and parts[1] == "forecast":
+		return request_forecast(bot,update)
+	elif parts[0] == "2" and parts[1] == "forecast":
+		return picked_instrument_for_forecast(bot,update,parts[2])
 	elif parts[0] == "3":
-		return picked_term(parts[1],parts[2],parts[3],bot,update)
+		return picked_term(bot,update,parts[1],parts[2])
+	elif parts[0] == "description" and parts[1] == "sub":
+		return description_sub(bot,update,parts[2])
+	elif parts[0] == "confirm" and parts[1] == "sub":
+		return confirm_sub(bot,update,parts[2])
+	elif parts[0] == "cancel" and parts[1] == "sub":
+		return cancel_sub(bot,update,parts[2])
 	else:
 		bot.send_message(update.callback_query.message.chat_id, "Invalid request")
 		return start(bot, update, chat_id = update.callback_query.message.chat_id)
 
 
-def request(req,bot,update):
+############
+# forecast #
+############
+def request_forecast(bot,update):
 	message = "Выберите инструмент"
 	button_list = [
-	    [InlineKeyboardButton("Bitcoin", callback_data="2_{}_btc".format(req))],
-	    [InlineKeyboardButton("Ethereum", callback_data="2_{}_eth".format(req))],
-	    [InlineKeyboardButton("Litecoin", callback_data="2_{}_ltc".format(req))],
+	    [InlineKeyboardButton("Bitcoin", callback_data="2_forecast_btc")],
+	    [InlineKeyboardButton("Ethereum", callback_data="2_forecast_eth")],
+	    [InlineKeyboardButton("Litecoin", callback_data="2_forecast_ltc")],
 	]
 	reply_markup = InlineKeyboardMarkup(button_list)
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
 
 
-def picked_instrument(req,instr,bot,update):
-	if req == "forecast":
-		return picked_instrument_for_forecast(req,instr,bot,update)
-	elif req == "strategy":
-		return picked_instrument_for_strategy(req,instr,bot,update)
-
-def picked_instrument_for_forecast(req,instr,bot,update):
+def picked_instrument_for_forecast(bot,update,instr):
 	message = "Выберите срок прогноза"
 	button_list = [
-	    [InlineKeyboardButton("Долгосрочный", callback_data="3_{}_{}_long".format(req,instr))],
-	    [InlineKeyboardButton("Среднесрочный", callback_data="3_{}_{}_mid".format(req,instr))],
-	    [InlineKeyboardButton("Краткосрочный", callback_data="3_{}_{}_short".format(req,instr))],
+	    [InlineKeyboardButton("Долгосрочный", callback_data="3_{}_long".format(instr))],
+	    [InlineKeyboardButton("Среднесрочный", callback_data="3_{}_mid".format(instr))],
+	    [InlineKeyboardButton("Краткосрочный", callback_data="3_{}_short".format(instr))],
 	]
 	reply_markup = InlineKeyboardMarkup(button_list)
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
 
 
-def picked_instrument_for_strategy(req,instr,bot,update):
+def picked_term(req,instr,term,bot,update):
+	is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
+	#if not is_ratelimited or term=="short":
+	filename = "documents/{}_{}_{}.html".format(req,instr,term)
+	bot.send_document(update.callback_query.message.chat_id,document=open(filename, 'rb'))
+	#else:
+	#	message = "Увы, вам доступны только краткосрочные прогнозы. Для получения доступа к остальным прогнозам сделайте репост нашего поста в Twitter"
+	#	bot.send_message(update.callback_query.message.chat_id,message)
+	return start(bot, update,update.callback_query.message.chat_id)
+
+
+############
+# strategy #
+############
+
+def request_strategy(bot,update):
+	message = "На какую стратегию вы желаете подписаться?"
+	button_list = [
+	    [InlineKeyboardButton("Пересечение средней и цены на Ethereum", callback_data="2_strategy_0")],
+	    [InlineKeyboardButton("Пересечение средней и цены на Bitcoin" , callback_data="2_strategy_1")],
+	    [InlineKeyboardButton("Обратный RSI на Bitcoin", callback_data="2_strategy_2")],
+	]
+	reply_markup = InlineKeyboardMarkup(button_list)
+	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
+
+def picked_instrument_for_strategy(bot,update,instr):
 	db = connect_db()
 	is_subscribed = db.is_subscribed(update.callback_query.message.chat_id, instr)
 	message = None
@@ -105,30 +130,43 @@ def picked_instrument_for_strategy(req,instr,bot,update):
 	if is_subscribed:
 		message = "Вы подписаны на обновления по инструменту"
 		button_list = [
+		    [InlineKeyboardButton("Описание", callback_data="description_sub_{}".format(instr))],
 		    [InlineKeyboardButton("Отписаться", callback_data="cancel_sub_{}".format(instr))],
-		    [InlineKeyboardButton("Отмена", callback_data="start".format(req,instr))],
+		    [InlineKeyboardButton("Отмена", callback_data="start")],
 		]
 	else:
 		message = "Подписаться на обновления по инструменту?"
 		button_list = [
+		    [InlineKeyboardButton("Описание", callback_data="description_sub_{}".format(instr))],
 		    [InlineKeyboardButton("Подписаться", callback_data="confirm_sub_{}".format(instr))],
-		    [InlineKeyboardButton("Отмена", callback_data="start".format(req,instr))],
+		    [InlineKeyboardButton("Отмена", callback_data="start")],
 		]
 	reply_markup = InlineKeyboardMarkup(button_list)
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
-				
+		
 
+def confirm_sub(bot,update,instr):
+	connect_db().subscribe_user(update.callback_query.message.chat_id, instr)
+	message = "Успешно подписаны"	
+	return start(bot, update,update.callback_query.message.chat_id,message=message)
 
-def picked_term(req,instr,term,bot,update):
-	is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
-	if not is_ratelimited or term=="short":
-		filename = "documents/{}_{}_{}.html".format(req,instr,term)
-		bot.send_document(update.callback_query.message.chat_id,document=open(filename, 'rb'))
-	else:
-		message = "Увы, вам доступны только краткосрочные прогнозы. Для получения доступа к остальным прогнозам сделайте репост нашего поста в Twitter"
-		bot.send_message(update.callback_query.message.chat_id,message)
-	return start(bot, update,update.callback_query.message.chat_id)
+def cancel_sub(bot,update,instr):
+	connect_db().usubscribe_user(update.callback_query.message.chat_id, instr)
+	message = "Успешно отписаны"	
+	return start(bot, update,update.callback_query.message.chat_id,message=message)
 
+def description_sub(bot,update,instr):
+	message = {
+		"0": "Стратегия открывает длинные позиции на паре ETHUSD, когда цена закрытия пересекает скользящую среднюю снизу-вверх. Короткая позиция открывается, когда цена закрытия пересекает скользящую среднюю сверху-вниз.\nПараметр средней: 10\nВременной интервал: 60 минут",
+		"1": "Стратегия открывает только длинные позиции на паре BTCUSD, когда цена закрытия пересекает скользящую среднюю снизу-вверх. Сделка закрывается, когда цена закрытия пересекает скользящую среднюю сверху-вниз.\nПараметр средней: 60\nВременной интервал: 60 минут",
+		"2": "Известная стратегия обратный RSI открывает длинные позиции, когда индикатор RSI превышает верхнее пороговое значение. Короткие позиции открываются, когда индикатор RSI меньше нижнего порогового значения.\nПараметр RSI: 14\nВерхнее пороговое значение: 70\nНижнее пороговое значение: 30\nВременной интервал: 30",
+	}[instr]
+	bot.send_message(update.callback_query.message.chat_id,message)
+	
+		
+###########
+# twitter #
+###########
 
 def prepare_repost(bot,update):
 	message = "Напишите ваше имя пользователя Twitter в формате @username"
@@ -172,20 +210,6 @@ def twitter_done_repost(bot,update):
 	else:
 		bot.send_message(chat_id=chatId, text="Репост не найден")	
 	return start(bot, update,update.callback_query.message.chat_id)
-		
-
-def confirm_sub(bot,update):
-	instr = update.callback_query.data[-3:]
-	connect_db().subscribe_user(update.callback_query.message.chat_id, instr)
-	message = "Successfully subscribed!"	
-	return start(bot, update,update.callback_query.message.chat_id,message=message)
-
-def cancel_sub(bot,update):
-	instr = update.callback_query.data[-3:]
-	connect_db().usubscribe_user(update.callback_query.message.chat_id, instr)
-	message = "Successfully unsubscribed!"	
-	return start(bot, update,update.callback_query.message.chat_id,message=message)
-
 
 ################
 ### signals ####
