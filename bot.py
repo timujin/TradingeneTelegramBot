@@ -97,10 +97,10 @@ def picked_instrument_for_forecast(bot,update,instr):
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
 
 
-def picked_term(req,instr,term,bot,update):
-	is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
+def picked_term(bot,update,instr,term):
+	#is_ratelimited = connect_db().is_ratelimited(update.callback_query.message.chat_id)
 	#if not is_ratelimited or term=="short":
-	filename = "documents/{}_{}_{}.html".format(req,instr,term)
+	filename = "documents/{}_{}_{}.html".format("forecast",instr,term)
 	bot.send_document(update.callback_query.message.chat_id,document=open(filename, 'rb'))
 	#else:
 	#	message = "Увы, вам доступны только краткосрочные прогнозы. Для получения доступа к остальным прогнозам сделайте репост нашего поста в Twitter"
