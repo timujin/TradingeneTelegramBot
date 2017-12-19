@@ -59,6 +59,8 @@ def callback_query(bot, update):
 		return request_forecast(bot,update)
 	elif parts[0] == "2" and parts[1] == "forecast":
 		return picked_instrument_for_forecast(bot,update,parts[2])
+	elif parts[0] == "2" and parts[1] == "strategy":
+		return picked_instrument_for_strategy(bot,update,parts[2])
 	elif parts[0] == "3":
 		return picked_term(bot,update,parts[1],parts[2])
 	elif parts[0] == "description" and parts[1] == "sub":
@@ -143,7 +145,6 @@ def picked_instrument_for_strategy(bot,update,instr):
 		]
 	reply_markup = InlineKeyboardMarkup(button_list)
 	bot.send_message(update.callback_query.message.chat_id,message,reply_markup=reply_markup)
-		
 
 def confirm_sub(bot,update,instr):
 	connect_db().subscribe_user(update.callback_query.message.chat_id, instr)
